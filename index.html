@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shri Dharacharya Volleyball League</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function VolleyballLeague() {
+            const [activeTab, setActiveTab] = useState('fixtures');
+            const [menuOpen, setMenuOpen] = useState(false);
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [showLogin, setShowLogin] = useState(false);
+            const [password, setPassword] = useState('');
+            const [teams, setTeams] = useState([]);
+            const [fixtures, setFixtures] = useState([]);
+            const [standings, setStandings] = useState([]);
+            const [motm, setMotm] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            const ADMIN_PASSWORD = 'admin123';
+
+            useEffect(() => {
+                loadAllData();
+            }, []);
+
+            const loadAllData = async () => {
+                setLoading(true);
+                try {
+                    const [teamsData, fixturesData, standingsData, motmData] = await Promise.all([
+                        loadData('vb_teams'),
+                        loadData('vb_fixtures'),
+                        loadData('vb_standings'),
+                        loadData('vb_motm')
+                    ]);
+
+                    setTeams(teamsData || getDefaultTeams());
+                    setFixtures(fixturesData || getDefaultFixtures());
+                    setStandings(standingsData || getDefaultStandings());
+                    setMotm(motmData || []);
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                    setTeams(getDefaultTeams());
+                    setFixtures(getDefaultFixtures());
+                    setStandings(getDefaultStandings());
+                    setMotm([]);
+                }
+                setLoading(false);
+            };
+
+            const loadData = async (key) => {
+                try {
+                    const result = await window.storage.get(key);
+                    return result ? JSON.parse(result.value) : null;
+                } catch (error) {
+                    return null;
+                }
+            };
+
+            const saveData = async (key, data) => {
+                try {
+                    await window.storage.set(key, JSON.stringify(data));
+                    return true;
+                } catch (error) {
+                    console.error('Error saving:', error);
+                    return false;
+                }
+            };
+
+            const getDefaultTeams = () => [
+                { id: 1, name: 'Team Thunder', color: '#3B82F6' },
+                { id: 2, name: 'Team Phoenix', color: '#EF4444' },
+                { id: 3, name: 'Team Titans', color: '#10B981' },
+                { id: 4, name: 'Team Warriors', color: '#F59E0B' },
+                { id: 5, name: 'Team Legends', color: '#8B5CF6' },
+                { id: 6, name: 'Team Champions', color: '#EC4899' }
+            ];
+
+            const getDefaultFixtures = () => [
+                { id: 1, team1: 'Team Thunder', team2: 'Team Phoenix', date: '2024-11-20', time: '16:00', status: 'upcoming', score1: null, score2: null },
+                { id: 2, team1: 'Team Titans', team2: 'Team Warriors', date: '2024-11-20', time: '17:30', status: 'upcoming', score1: null, score2: null },
+                { id: 3, team1: 'Team Legends', team2: 'Team Champions', date: '2024-11-21', time: '16:00', status: 'upcoming', score1: null, score2: null }
+            ];
+
+            const getDefaultStandings = () => [
+                { team: 'Team Thunder', played: 0, won: 0, lost: 0, points: 0 },
+                { team: 'Team Phoenix', played: 0, won: 0, lost: 0, points: 0 },
+                { team: 'Team Titans', played: 0, won: 0, lost: 0, points: 0 },
+                { team: 'Team Warriors', played: 0, won: 0, lost: 0, points: 0 },
+                { team: 'Team Legends', played: 0, won: 0, lost: 0, points: 0 },
+                { team: 'Team Champions', played: 0, won: 0, lost: 0, points: 0 }
+            ];
+
+            const handleLogin = () => {
+                if (password === ADMIN_PASSWORD) {
+                    setIsAdmin(true);
+                    setShowLogin(false);
+                    setPassword('');
+                    alert('✅ Admin access granted!');
+                } else {
+                    alert('❌ Wrong password!');
+                }
+            };
+
+            const handleLogout = () => {
+                setIsAdmin(false);
+                alert('Logged out successfully!');
+            };
+
+            const getTeamColor = (teamName) => {
+                const team = teams.find(t => t.name === teamName);
+                return team ? team.color : '#6B7280';
+            };
+
+            const updateFixtureScore = async (id, score1, score2, status) => {
+                const updated = fixtures.map(f => 
+                    f.id === id ? { ...f, score1: parseInt(score1), score2: parseInt(score2), status } : f
+                );
+                setFixtures(updated);
+                await saveData('vb_fixtures', updated);
+                
+                if (status === 'completed') {
+                    await updateStandingsFromMatch(fixtures.find(f => f.id === id), parseInt(score1), parseInt(score2));
+                }
+            };
+
+            const updateStandingsFromMatch = async (match, score1, score2) => {
+                const updated = standings.map(team => {
+                    if (team.team === match.team1) {
+                        const won = score1 > score2 ? team.won + 1 : team.won;
+                        const lost = score1 < score2 ? team.lost + 1 : team.lost;
+                        return {
+                            ...team,
+                            played: team.played + 1,
+                            won,
+                            lost,
+                            points: won * 3
+                        };
+                    }
+                    if (team.team === match.team2) {
+                        const won = score2 > score1 ? team.won + 1 : team.won;
+                        const lost = score2 < score1 ? team.lost + 1 : team.lost;
+                        return {
+                            ...team,
+                            played: team.played + 1,
+                            won,
+                            lost,
+                            points: won * 3
+                        };
+                    }
+                    return team;
+                });
+                setStandings(updated);
+                await saveData('vb_standings', updated);
+            };
+
+            const addNewFixture = async (team1, team2, date, time) => {
+                const newId = fixtures.length > 0 ? Math.max(...fixtures.map(f => f.id)) + 1 : 1;
+                const newFixture = {
+                    id: newId,
+                    team1,
+                    team2,
+                    date,
+                    time,
+                    status: 'upcoming',
+                    score1: null,
+                    score2: null
+                };
+                const updated = [...fixtures, newFixture];
+                setFixtures(updated);
+                await saveData('vb_fixtures', updated);
+            };
+
+            const addMOTM = async (matchId, playerName, teamName) => {
+                const newAward = {
+                    matchId: parseInt(matchId),
+                    playerName,
+                    team: teamName,
+                    date: new Date().toISOString().split('T')[0]
+                };
+                const updated = [...motm, newAward];
+                setMotm(updated);
+                await saveData('vb_motm', updated);
+            };
+
+            const deleteFixture = async (id) => {
+                if (confirm('Are you sure you want to delete this fixture?')) {
+                    const updated = fixtures.filter(f => f.id !== id);
+                    setFixtures(updated);
+                    await saveData('vb_fixtures', updated);
+                }
+            };
+
+            const sortedStandings = [...standings].sort((a, b) => b.points - a.points);
+            const liveFixtures = fixtures.filter(f => f.status === 'live' || f.status === 'completed');
+
+            if (loading) {
+                return (
+                    <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #111827, #0f172a, #111827)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏐</div>
+                            <div>Loading...</div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #111827, #0f172a, #111827)', color: 'white' }}>
+                    <header style={{ background: 'linear-gradient(to right, #2563eb, #9333ea, #ec4899)', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '1.5rem 1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fcd34d" strokeWidth="2">
+                                        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+                                        <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+                                        <path d="M4 22h16"></path>
+                                        <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
+                                        <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
+                                        <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
+                                    </svg>
+                                    <div>
+                                        <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold', margin: 0 }}>Shri Dharacharya</h1>
+                                        <p style={{ fontSize: '0.875rem', color: '#bfdbfe', margin: 0 }}>Intra Hostel Volleyball League</p>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                    {isAdmin ? (
+                                        <button onClick={handleLogout} style={{ background: '#dc2626', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', fontSize: '0.875rem' }}>
+                                            🔓 Logout
+                                        </button>
+                                    ) : (
+                                        <button onClick={() => setShowLogin(true)} style={{ background: '#059669', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', fontSize: '0.875rem' }}>
+                                            🔐 Admin
+                                        </button>
+                                    )}
+                                    <button onClick={() => setMenuOpen(!menuOpen)} style={{ display: 'block', background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: '0.5rem', fontSize: '1.5rem' }} className="mobile-menu-btn">
+                                        {menuOpen ? '✕' : '☰'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    {showLogin && !isAdmin && (
+                        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+                            <div style={{ background: '#1f2937', padding: '2rem', borderRadius: '0.5rem', maxWidth: '400px', width: '90%' }}>
+                                <h3 style={{ marginBottom: '1rem', fontSize: '1.5rem' }}>Admin Login</h3>
+                                <input 
+                                    type="password" 
+                                    placeholder="Enter password" 
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                                    style={{ width: '100%', padding: '0.75rem', background: '#374151', border: '1px solid #4b5563', borderRadius: '0.375rem', color: 'white', marginBottom: '1rem' }}
+                                />
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button onClick={handleLogin} style={{ flex: 1, background: '#059669', color: 'white', padding: '0.75rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', fontWeight: '500' }}>
+                                        Login
+                                    </button>
+                                    <button onClick={() => { setShowLogin(false); setPassword(''); }} style={{ flex: 1, background: '#4b5563', color: 'white', padding: '0.75rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', fontWeight: '500' }}>
+                                        Cancel
+                                    </button>
+                                </div>
+                                <p style={{ marginTop: '1rem', fontSize: '0.875rem', color: '#9ca3af' }}>Default password: admin123</p>
+                            </div>
+                        </div>
+                    )}
+
+                    <nav style={{ background: '#1f2937', borderBottom: '1px solid #374151', display: menuOpen ? 'block' : 'none' }} className="desktop-nav">
+                        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 1rem' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }} className="nav-flex">
+                                {[
+                                    { id: 'fixtures', label: '📅 Fixtures' },
+                                    { id: 'live', label: '🏆 Live Scores' },
+                                    { id: 'standings', label: '📊 Standings' },
+                                    { id: 'motm', label: '🏅 Player of Match' },
+                                    ...(isAdmin ? [{ id: 'admin', label: '⚙️ Admin Panel' }] : [])
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => { setActiveTab(tab.id); setMenuOpen(false); }}
+                                        style={{
+                                            padding: '0.75rem 1.5rem',
+                                            fontWeight: '500',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.3s',
+                                            background: activeTab === tab.id ? 'linear-gradient(to right, #2563eb, #9333ea)' : 'transparent',
+                                            color: activeTab === tab.id ? 'white' : '#d1d5db',
+                                            textAlign: 'left'
+                                        }}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </nav>
+
+                    <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1rem' }}>
+                        {activeTab === 'fixtures' && <FixturesTab fixtures={fixtures} getTeamColor={getTeamColor} isAdmin={isAdmin} updateFixtureScore={updateFixtureScore} deleteFixture={deleteFixture} />}
+                        {activeTab === 'live' && <LiveScoresTab fixtures={liveFixtures} getTeamColor={getTeamColor} />}
+                        {activeTab === 'standings' && <StandingsTab standings={sortedStandings} getTeamColor={getTeamColor} />}
+                        {activeTab === 'motm' && <MOTMTab motm={motm} />}
+                        {activeTab === 'admin' && isAdmin && <AdminPanel teams={teams} fixtures={fixtures} addNewFixture={addNewFixture} addMOTM={addMOTM} />}
+                    </main>
+
+                    <footer style={{ background: '#111827', borderTop: '1px solid #1f2937', marginTop: '3rem', padding: '1.5rem' }}>
+                        <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center', color: '#9ca3af' }}>
+                            <p>© 2024 Shri Dharacharya Intra Hostel Volleyball League</p>
+                            <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>Good luck to all teams! 🏐</p>
+                        </div>
+                    </footer>
+
+                    <style>{`
+                        @media (min-width: 768px) {
+                            .desktop-nav { display: block !important; }
+                            .mobile-menu-btn { display: none !important; }
+                            .nav-flex { flex-direction: row !important; }
+                            .fixture-layout { flex-direction: row !important; }
+                        }
+                        @keyframes pulse {
+                            0%, 100% { opacity: 1; }
+                            50% { opacity: 0.5; }
+                        }
+                    `}</style>
+                </div>
+            );
+        }
+
+        function FixturesTab({ fixtures, getTeamColor, isAdmin, updateFixtureScore, deleteFixture }) {
+            const [editingId, setEditingId] = useState(null);
+            const [editScore1, setEditScore1] = useState('');
+            const [editScore2, setEditScore2] = useState('');
+
+            const handleSave = (id) => {
+                const status = editScore1 && editScore2 ? 'completed' : 'upcoming';
+                updateFixtureScore(id, editScore1, editScore2, status);
+                setEditingId(null);
+            };
+
+            const handleSetLive = (id) => {
+                updateFixtureScore(id, 0, 0, 'live');
+            };
+
+            return (
+                <div>
+                    <h2 style={{ fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '1.5rem', background: 'linear-gradient(to right, #60a5fa, #a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                        Match Fixtures
+                    </h2>
+                    {fixtures.map(fixture => (
+                        <div key={fixture.id} style={{ background: '#1f2937', borderRadius: '0.5rem', padding: '1.5rem', marginBottom: '1rem', border: '1px solid #374151' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
+                                        <div style={{ textAlign: 'right', flex: 1 }}>
+                                            <p style={{ fontWeight: 'bold', fontSize: '1.125rem', color: getTeamColor(fixture.team1), margin: 0 }}>
+                                                {fixture.team1}
+                                            </p>
+                                        </div>
+                                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#9ca3af' }}>VS</div>
+                                        <div style={{ textAlign: 'left', flex: 1 }}>
+                                            <p style={{ fontWeight: 'bold', fontSize: '1.125rem', color: getTeamColor(fixture.team2), margin: 0 }}>
+                                                {fixture.team2}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div style={{ textAlign: 'center' }}>
+                                        <p style={{ fontSize: '0.875rem', color: '#9ca3af', margin: '0 0 0.25rem 0' }}>{fixture.date}</p>
+                                        <p style={{ fontSize: '1.125rem', fontWeight: '600', color: '#60a5fa', margin: '0 0 0.5rem 0' }}>{fixture.time}</p>
+                                        <span style={{
+                                            display: 'inline-block',
+                                            padding: '0.25rem 0.75rem',
+                                            borderRadius: '9999px',
+                                            fontSize: '0.75rem',
+                                            fontWeight: '500',
+                                            background: fixture.status === 'completed' ? '#059669' : fixture.status === 'live' ? '#dc2626' : '#4b5563'
+                                        }}>
+                                            {fixture.status.toUpperCase()}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {isAdmin && (
+                                    <div style={{ borderTop: '1px solid #374151', paddingTop: '1rem' }}>
+                                        {editingId === fixture.id ? (
+                                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                <input type="number" placeholder="Score 1" value={editScore1} onChange={(e) => setEditScore1(e.target.value)} style={{ padding: '0.5rem', background: '#374151', border: '1px solid #4b5563', borderRadius: '0.375rem', color: 'white', width: '80px' }} />
+                                                <input type="number" placeholder="Score 2" value={editScore2} onChange={(e) => setEditScore2(e.target.value)} style={{ padding: '0.5rem', background: '#374151', border: '1px solid #4b5563', borderRadius: '0.375rem', color: 'white', width: '80px' }} />
+                                                <button onClick={() => handleSave(fixture.id)} style={{ padding: '0.5rem 1rem', background: '#059669', color: 'white', borderRadius: '0.375rem', border: 'none', cursor: 'pointer' }}>Save</button>
+                                                <button onClick={() => setEditingId(null)} style={{ padding: '0.5rem 1rem', background: '#4b5563', color: 'white', borderRadius: '0.375rem', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                <button onClick={() => { setEditingId(fixture.id); setEditScore1(fixture.score1 || ''); setEditScore2(fixture.score2 || ''); }} style={{ padding: '0.5rem 1rem', background: '#2563eb', color: 'white', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', fontSize: '0.875rem' }}>
+                                                    Edit Score
+                                                </button>
+                                                {fixture.status === 'upcoming' && (
+                                                    <button onClick={() => handleSetLive(fixture.id)} style={{ padding: '0.5rem 1rem', background: '#dc2626', color: 'white', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', fontSize: '0.875rem' }}>
+                                                        Set Live
+                                                    </button>
+                                                )}
+                                                <button onClick={() => deleteFixture(fixture.id)} style={{ padding: '0.5rem 1rem', background: '#7f1d1d', color: 'white', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', fontSize: '0.875rem' }}>
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        function LiveScoresTab({ fixtures, getTeamColor }) {
+            return (
+                <div>
+                    <h2 style={{ fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '1.5rem', background: 'linear-gradient(to right, #f87171, #fb923c)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                        Live Scores
+                    </h2>
+                    {fixtures.length === 0 ? (
+                        <div style={{ background: '#1f2937', borderRadius: '0.5rem', padding: '3rem', textAlign: 'center', border: '1px solid #374151' }}>
+                            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🏐</div>
+                            <p style={{ fontSize: '1.25rem', color: '#9ca3af' }}>No live matches at the moment</p>
+                        </div>
+                    ) : (
+                        fixtures.map(fixture => (
+                            <div key={fixture.id} style={{ background: '#1f2937', borderRadius: '0.5rem', padding: '2rem', marginBottom: '1rem', border: '2px solid #dc2626' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '2rem' }}>
+                                    <div style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
+                                        <p style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom: '0.5rem', color: getTeamColor(fixture.team1) }}>
+                                            {fixture.team1}
+                                        </p>
+                                        <p style={{ fontSize: '3rem', fontWeight: 'bold', color: '#60a5fa', margin: 0 }}>
+                                            {fixture.score1 ?? '-'}
+                                        </p>
+                                    </div>
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div style={{ fontSize: '2.25rem', fontWeight: 'bold', color: '#9ca3af' }}>:</div>
+                                        {fixture.status === 'live' && (
+                                            <div style={{ marginTop: '0.5rem', color: '#ef4444', fontWeight: 'bold', animation: 'pulse 2s infinite' }}>LIVE</div>
+                                        )}
+                                    </div>
+                                    <div style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
+                                        <p style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom: '0.5rem', color: getTeamColor(fixture.team2) }}>
+                                            {fixture.team2}
+                                        </p>
+                                        <p style={{ fontSize: '3rem', fontWeight: 'bold', color: '#a78bfa', margin: 0 }}>
+                                            {fixture.score2 ?? '-'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            );
+        }
+
+        function StandingsTab({ standings, getTeamColor }) {
+            return (
+                <div>
+                    <h2 style={{ fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '1.5rem', background: 'linear-gradient(to right, #34d399, #60a5fa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                        League Standings
+                    </h2>
+                    <div style={{ background: '#1f2937', borderRadius: '0.5rem', overflow: 'hidden', border: '1px solid #374151' }}>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead style={{ background: 'linear-gradient(to right, #2563eb, #9333ea)' }}>
+                                    <tr>
+                                        <th style={{ padding: '1rem', textAlign: 'left' }}>Pos</th>
+                                        <th style={{ padding: '1rem', textAlign: 'left' }}>Team</th>
+                                        <th style={{ padding: '1rem', textAlign: 'center' }}>P</th>
+                                        <th style={{ padding: '1rem', textAlign: 'center' }}>W</th>
+                                        <th style={{ padding: '1rem', textAlign: 'center' }}>L</th>
+                                        <th style={{ padding: '1rem', textAlign: 'center' }}>Pts</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {standings.map((team, index) => (
+                                        <tr key={team.team} style={{ borderBottom: '1px solid #374151' }}>
+                                            <td style={{ padding: '1rem' }}>
+                                                <span style={{ fontWeight: 'bold', color: index < 2 ? '#fbbf24' : 'white' }}>
+                                                    {index + 1}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '1rem' }}>
+                                                <span style={{ fontWeight: '600', color: getTeamColor(team.team) }}>
+                                                    {team.team}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '1rem', textAlign: 'center' }}>{team.played}</td>
+                                            <td style={{ padding: '1rem', textAlign: 'center', color: '#34d399' }}>{team.won}</td>
+                                            <td style={{ padding: '1rem', textAlign: 'center', color: '#f87171' }}>{team.lost}</td>
+                                            <td style={{ padding: '1rem', textAlign: 'center' }}>
+                                                <span style={{ fontWeight: 'bold', color: '#60a5fa' }}>{team.points}</span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function MOTMTab({ motm }) {
+            return (
+                <div>
+                    <h2 style={{ fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '1.5rem', background: 'linear-gradient(to right, #fbbf24, #f97316)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                        Player of the Match
+                    </h2>
+                    {motm.length === 0 ? (
+                        <div style={{ background: '#1f2937', borderRadius: '0.5rem', padding: '3rem', textAlign: 'center', border: '1px solid #374151' }}>
+                            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🏅</div>
+                            <p style={{ fontSize: '1.25rem', color: '#9ca3af' }}>No awards yet</p>
+                        </div>
+                    ) : (
+                        motm.map((award, index) => (
+                            <div key={index} style={{ background: 'linear-gradient(to right, #d97706, #ea580c)', borderRadius: '0.5rem', padding: '1.5rem', marginBottom: '1rem', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                    <div style={{ fontSize: '3rem' }}>🏅</div>
+                                    <div style={{ flex: 1 }}>
+                                        <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 0.25rem 0' }}>{award.playerName}</p>
+                                        <p style={{ color: '#fed7aa', margin: '0 0 0.25rem 0' }}>{award.team}</p>
+                                        <p style={{ fontSize: '0.875rem', color: '#fef3c7', margin: 0 }}>
+                                            Match {award.matchId} • {award.date}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            );
+        }
+
+        function AdminPanel({ teams, fixtures, addNewFixture, addMOTM }) {
+            const [newTeam1, setNewTeam1] = useState('');
+            const [newTeam2, setNewTeam2] = useState('');
+            const [newDate, setNewDate] = useState('');
+            const [newTime, setNewTime] = useState('');
+            const [motmMatchId, setMotmMatchId] = useState('');
+            const [motmPlayer, setMotmPlayer] = useState('');
+            const [motmTeam, setMotmTeam] = useState('');
+
+            const handleAddFixture = () => {
+                if (newTeam1 && newTeam2 && newDate && newTime) {
+                    addNewFixture(newTeam1, newTeam2, newDate, newTime);
+                    setNewTeam1('');
+                    setNewTeam2('');
+                    setNewDate('');
+                    setNewTime('');
+                    alert('✅ Fixture added successfully!');
+                } else {
+                    alert('❌ Please fill all fields!');
+                }
+            };
+
+            const handleAddMOTM = () => {
+                if (motmMatchId && motmPlayer && motmTeam) {
+                    addMOTM(motmMatchId, motmPlayer, motmTeam);
+                    setMotmMatchId('');
+                    setMotmPlayer('');
+                    setMotmTeam('');
+                    alert('✅ Player of the Match added!');
+                } else {
+                    alert('❌ Please fill all fields!');
+                }
+            };
+
+            return (
+                <div>
+                    <h2 style={{ fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '1.5rem', background: 'linear-gradient(to right, #a78bfa, #ec4899)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                        Admin Panel
+                    </h2>
+
+                    <div style={{ background: '#1f2937', borderRadius: '0.5rem', padding: '1.5rem', marginBottom: '1.5rem', border: '1px solid #374151' }}>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem', color: '#60a5fa' }}>➕ Add New Fixture</h3>
+                        <div style={{ display: 'grid', gap: '1rem' }}>
+                            <select value={newTeam1} onChange={(e) => setNewTeam1(e.target.value)} style={{ padding: '0.75rem', background: '#374151', border: '1px solid #4b5563', borderRadius: '0.375rem', color: 'white' }}>
+                                <option value="">Select Team 1</option>
+                                {teams.map(team => (
+                                    <option key={team.id} value={team.name}>{team.name}</option>
+                                ))}
+                            </select>
+                            <select value={newTeam2} onChange={(e) => setNewTeam2(e.target.value)} style={{ padding: '0.75rem', background: '#374151', border: '1px solid #4b5563', borderRadius: '0.375rem', color: 'white' }}>
+                                <option value="">Select Team 2</option>
+                                {teams.map(team => (
+                                    <option key={team.id} value={team.name}>{team.name}</option>
+                                ))}
+                            </select>
+                            <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} style={{ padding: '0.75rem', background: '#374151', border: '1px solid #4b5563', borderRadius: '0.375rem', color: 'white' }} />
+                            <input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)} style={{ padding: '0.75rem', background: '#374151', border: '1px solid #4b5563', borderRadius: '0.375rem', color: 'white' }} />
+                            <button onClick={handleAddFixture} style={{ padding: '0.75rem', background: '#059669', color: 'white', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '1rem' }}>
+                                Add Fixture
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style={{ background: '#1f2937', borderRadius: '0.5rem', padding: '1.5rem', marginBottom: '1.5rem', border: '1px solid #374151' }}>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem', color: '#fbbf24' }}>🏅 Add Player of the Match</h3>
+                        <div style={{ display: 'grid', gap: '1rem' }}>
+                            <select value={motmMatchId} onChange={(e) => setMotmMatchId(e.target.value)} style={{ padding: '0.75rem', background: '#374151', border: '1px solid #4b5563', borderRadius: '0.375rem', color: 'white' }}>
+                                <option value="">Select Match</option>
+                                {fixtures.filter(f => f.status === 'completed').map(fixture => (
+                                    <option key={fixture.id} value={fixture.id}>
+                                        Match {fixture.id}: {fixture.team1} vs {fixture.team2}
+                                    </option>
+                                ))}
+                            </select>
+                            <input type="text" placeholder="Player Name" value={motmPlayer} onChange={(e) => setMotmPlayer(e.target.value)} style={{ padding: '0.75rem', background: '#374151', border: '1px solid #4b5563', borderRadius: '0.375rem', color: 'white' }} />
+                            <select value={motmTeam} onChange={(e) => setMotmTeam(e.target.value)} style={{ padding: '0.75rem', background: '#374151', border: '1px solid #4b5563', borderRadius: '0.375rem', color: 'white' }}>
+                                <option value="">Select Team</option>
+                                {teams.map(team => (
+                                    <option key={team.id} value={team.name}>{team.name}</option>
+                                ))}
+                            </select>
+                            <button onClick={handleAddMOTM} style={{ padding: '0.75rem', background: '#d97706', color: 'white', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '1rem' }}>
+                                Add Award
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style={{ background: '#1f2937', borderRadius: '0.5rem', padding: '1.5rem', border: '1px solid #374151' }}>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem', color: '#a78bfa' }}>ℹ️ Instructions</h3>
+                        <ul style={{ color: '#d1d5db', lineHeight: '1.8' }}>
+                            <li>Go to <strong>Fixtures</strong> tab to edit scores and set matches live</li>
+                            <li>Use "Edit Score" to update match scores</li>
+                            <li>Click "Set Live" to mark a match as currently playing</li>
+                            <li>Standings are automatically updated when you mark matches as completed</li>
+                            <li>Add Player of the Match awards for completed matches</li>
+                            <li>All changes are saved automatically</li>
+                        </ul>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<VolleyballLeague />, document.getElementById('root'));
+    </script>
+</body>
+</html>
